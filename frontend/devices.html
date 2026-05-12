@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devices - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html" class="active">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2 id="formTitle">Create Device</h2>
+            <form id="createForm">
+                <input type="hidden" id="edit_id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="node_id">Node</label>
+                        <select id="node_id" required>
+                            <option value="">Select node...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rack_id">Rack</label>
+                        <select id="rack_id" required>
+                            <option value="">Select rack...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" required placeholder="e.g., Switch-01">
+                    </div>
+                    <div class="form-group">
+                        <label for="device_type">Device Type</label>
+                        <select id="device_type" required>
+                            <option value="edge switch">Edge Switch</option>
+                            <option value="agg switch">Agg Switch</option>
+                            <option value="router">Router</option>
+                            <option value="ups">UPS</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="manufacturer">Manufacturer</label>
+                        <input type="text" id="manufacturer" placeholder="e.g., Cisco">
+                    </div>
+                    <div class="form-group">
+                        <label for="model">Model</label>
+                        <input type="text" id="model" placeholder="e.g., Catalyst 2960">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="serial_number">Serial Number</label>
+                        <input type="text" id="serial_number" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label for="ip_address">IP Address</label>
+                        <input type="text" id="ip_address" placeholder="e.g., 192.168.1.1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="network">Network</label>
+                        <select id="network">
+                            <option value="">None</option>
+                            <option value="Clicknet">Clicknet</option>
+                            <option value="Ezrahi Tahor">Ezrahi Tahor</option>
+                            <option value="Clickfree">Clickfree</option>
+                            <option value="Shahor Zahav">Shahor Zahav</option>
+                            <option value="Tzavar">Tzavar</option>
+                            <option value="Katom">Katom</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="maintenance">Maintenance</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rack_position">Rack Position (U)</label>
+                        <input type="number" id="rack_position" placeholder="e.g., 1">
+                    </div>
+                    <div class="form-group">
+                        <label for="rack_units">Rack Units</label>
+                        <input type="number" id="rack_units" value="1" min="1">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" id="submitBtn">Create Device</button>
+                <button type="button" class="btn" id="cancelBtn" style="display:none;" onclick="cancelEdit()">Cancel</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Devices</h2>
+            <div id="list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+        let allRacks = [];
+
+        async function loadNodesAndRacks() {
+            const nodes = await apiGet('/nodes?site_id=1');
+            allRacks = await apiGet('/racks');
+
+            const nodeSelect = document.getElementById('node_id');
+            nodeSelect.innerHTML = '<option value="">Select node...</option>' +
+                nodes.map(n => `<option value="${n.id}">${esc(n.name)} (${esc(n.location)})</option>`).join('');
+
+            nodeSelect.addEventListener('change', () => {
+                const filtered = allRacks.filter(r => r.node_id === parseInt(nodeSelect.value));
+                document.getElementById('rack_id').innerHTML = '<option value="">Select rack...</option>' +
+                    filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+            });
+        }
+
+        async function loadDevices() {
+            const [devices, nodes, racks] = await Promise.all([
+                apiGet('/devices'),
+                apiGet('/nodes?site_id=1'),
+                apiGet('/racks')
+            ]);
+            const nodeMap = {}; nodes.forEach(n => nodeMap[n.id] = n.name);
+            const rackMap = {}; racks.forEach(r => rackMap[r.id] = r.name);
+
+            const list = document.getElementById('list');
+            if (!devices.length) {
+                list.innerHTML = '<p>No devices yet.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Manufacturer</th><th>Model</th><th>IP</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${devices.map(d => `
+                            <tr>
+                                <td>${esc(d.name)}</td>
+                                <td>${esc(nodeMap[d.node_id] || '-')}</td>
+                                <td>${esc(rackMap[d.rack_id] || '-')}</td>
+                                <td>${esc(d.device_type)}</td>
+                                <td>${esc(d.manufacturer || '-')}</td>
+                                <td>${esc(d.model || '-')}</td>
+                                <td>${esc(d.ip_address || '-')}</td>
+                                <td><span class="badge badge-${d.status === 'active' ? 'active' : 'inactive'}">${esc(d.status)}</span></td>
+                                <td class="actions">
+                                    <button class="btn" onclick="editDevice(${d.id}, ${d.node_id}, ${d.rack_id}, '${esc(d.name)}', '${esc(d.device_type || '')}', '${esc(d.manufacturer || '')}', '${esc(d.model || '')}', '${esc(d.serial_number || '')}', '${esc(d.ip_address || '')}', '${esc(d.network || '')}', '${d.status}', ${d.rack_position || 0}, ${d.rack_units})">Edit</button>
+                                    <button class="btn btn-danger" onclick="deleteDevice(${d.id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function editDevice(id, nodeId, rackId, name, deviceType, manufacturer, model, serialNumber, ipAddress, network, status, rackPosition, rackUnits) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('name').value = name;
+            document.getElementById('device_type').value = deviceType;
+            document.getElementById('manufacturer').value = manufacturer;
+            document.getElementById('model').value = model;
+            document.getElementById('serial_number').value = serialNumber;
+            document.getElementById('ip_address').value = ipAddress;
+            document.getElementById('network').value = network;
+            document.getElementById('status').value = status;
+            document.getElementById('rack_position').value = rackPosition || '';
+            document.getElementById('rack_units').value = rackUnits;
+            document.getElementById('node_id').value = nodeId;
+            const filtered = allRacks.filter(r => r.node_id === nodeId);
+            document.getElementById('rack_id').innerHTML = '<option value="">Select rack...</option>' +
+                filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+            setTimeout(() => { document.getElementById('rack_id').value = rackId; }, 50);
+            document.getElementById('formTitle').textContent = 'Edit Device';
+            document.getElementById('submitBtn').textContent = 'Update Device';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            window.scrollTo(0, 0);
+        }
+
+        function cancelEdit() {
+            document.getElementById('edit_id').value = '';
+            document.getElementById('createForm').reset();
+            document.getElementById('formTitle').textContent = 'Create Device';
+            document.getElementById('submitBtn').textContent = 'Create Device';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        async function createDevice(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit_id').value;
+            const data = {
+                node_id: parseInt(document.getElementById('node_id').value),
+                rack_id: parseInt(document.getElementById('rack_id').value),
+                name: document.getElementById('name').value,
+                device_type: document.getElementById('device_type').value,
+                manufacturer: document.getElementById('manufacturer').value || null,
+                model: document.getElementById('model').value || null,
+                serial_number: document.getElementById('serial_number').value || null,
+                ip_address: document.getElementById('ip_address').value || null,
+                network: document.getElementById('network').value || null,
+                status: document.getElementById('status').value,
+                rack_position: parseInt(document.getElementById('rack_position').value) || null,
+                rack_units: parseInt(document.getElementById('rack_units').value)
+            };
+            try {
+                if (editId) {
+                    await apiPut(`/devices/${editId}`, data);
+                    showMessage('Device updated');
+                    cancelEdit();
+                } else {
+                    await apiPost('/devices', data);
+                    showMessage('Device created');
+                    e.target.reset();
+                }
+                loadDevices();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function deleteDevice(id) {
+            if (!confirm('Delete this device?')) return;
+            try {
+                await apiDelete(`/devices/${id}`);
+                showMessage('Device deleted');
+                loadDevices();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('createForm').addEventListener('submit', createDevice);
+        loadNodesAndRacks().then(loadDevices);
+    </script>
+</body>
+</html>

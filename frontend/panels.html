@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panels - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html" class="active">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2 id="formTitle">Create Regular Panel</h2>
+            <form id="createForm">
+                <input type="hidden" id="edit_id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="node_id">Node</label>
+                        <select id="node_id" required>
+                            <option value="">Select node...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rack_id">Rack</label>
+                        <select id="rack_id" required>
+                            <option value="">Select rack...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" required placeholder="e.g., Panel A1">
+                    </div>
+                    <div class="form-group">
+                        <label for="physical_type">Physical Type</label>
+                        <select id="physical_type" required>
+                            <option value="copper">Copper</option>
+                            <option value="fiber">Fiber</option>
+                            <option value="ethernet">Ethernet</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="connector_type">Connector Type</label>
+                        <select id="connector_type" required>
+                            <option value="RJ45">RJ45 (Copper)</option>
+                            <option value="LC">LC (Fiber)</option>
+                            <option value="SC">SC (Fiber)</option>
+                            <option value="MPO">MPO (Fiber)</option>
+                            <option value="ST">ST (Fiber)</option>
+                            <option value="FC">FC (Fiber)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="port_count">Port Count</label>
+                        <input type="number" id="port_count" value="24" min="1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rack_position">Rack Position (U)</label>
+                        <input type="number" id="rack_position" placeholder="e.g., 1">
+                    </div>
+                    <div class="form-group">
+                        <label for="rack_units">Rack Units</label>
+                        <input type="number" id="rack_units" value="1" min="1">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" id="submitBtn">Create Panel</button>
+                <button type="button" class="btn" id="cancelBtn" style="display:none;" onclick="cancelEdit()">Cancel</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Create HDF Panel</h2>
+            <form id="hdfForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hdf_node_id">Node</label>
+                        <select id="hdf_node_id" required>
+                            <option value="">Select node...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="hdf_rack_id">Rack (optional)</label>
+                        <select id="hdf_rack_id">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hdf_name">Name</label>
+                        <input type="text" id="hdf_name" required placeholder="e.g., HDF-01">
+                    </div>
+                    <div class="form-group">
+                        <label for="hdf_rows">Rows (1-100)</label>
+                        <input type="number" id="hdf_rows" value="2" min="1" max="100" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="hdf_description">Description</label>
+                    <input type="text" id="hdf_description" placeholder="Optional">
+                </div>
+                <button type="submit" class="btn btn-success">Create HDF Panel</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Panels</h2>
+            <div id="list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+        let allRacks = [];
+
+        async function loadNodesAndRacks() {
+            const nodes = await apiGet('/nodes?site_id=1');
+            allRacks = await apiGet('/racks');
+
+            const nodeSelect = document.getElementById('node_id');
+            const hdfNodeSelect = document.getElementById('hdf_node_id');
+            const rackSelect = document.getElementById('rack_id');
+            const hdfRackSelect = document.getElementById('hdf_rack_id');
+
+            const nodeOptions = '<option value="">Select node...</option>' +
+                nodes.map(n => `<option value="${n.id}">${esc(n.name)} (${esc(n.location)})</option>`).join('');
+
+            nodeSelect.innerHTML = nodeOptions;
+            hdfNodeSelect.innerHTML = nodeOptions;
+
+            function updateRacks(nodeId, selectEl, includeNone = false) {
+                const filtered = allRacks.filter(r => r.node_id === parseInt(nodeId));
+                const opts = (includeNone ? '<option value="">None</option>' : '<option value="">Select rack...</option>') +
+                    filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+                selectEl.innerHTML = opts;
+            }
+
+            nodeSelect.addEventListener('change', () => updateRacks(nodeSelect.value, rackSelect));
+            hdfNodeSelect.addEventListener('change', () => updateRacks(hdfNodeSelect.value, hdfRackSelect, true));
+        }
+            const [panels, nodes, racks] = await Promise.all([
+                apiGet('/panels'),
+                apiGet('/nodes?site_id=1'),
+                apiGet('/racks')
+            ]);
+            const nodeMap = {}; nodes.forEach(n => nodeMap[n.id] = n.name);
+            const rackMap = {}; racks.forEach(r => rackMap[r.id] = r.name);
+
+            const list = document.getElementById('list');
+            if (!panels.length) {
+                list.innerHTML = '<p>No panels yet.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Ports</th><th>Physical</th><th>Connector</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${panels.map(p => `
+                            <tr>
+                                <td>${esc(p.name)}</td>
+                                <td>${esc(nodeMap[p.node_id] || '-')}</td>
+                                <td>${esc(rackMap[p.rack_id] || '-')}</td>
+                                <td>${esc(p.physical_type)}</td>
+                                <td>${p.actual_port_count || 0}/${p.port_count}</td>
+                                <td>${esc(p.physical_type)}</td>
+                                <td>${esc(p.connector_type)}</td>
+                                <td class="actions">
+                                    <button class="btn" onclick="editPanel(${p.id}, ${p.node_id}, ${p.rack_id}, '${esc(p.name)}', '${p.physical_type}', '${p.connector_type}', ${p.port_count}, ${p.rack_position || 0}, ${p.rack_units})">Edit</button>
+                                    <button class="btn btn-danger" onclick="deletePanel(${p.id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function editPanel(id, nodeId, rackId, name, physicalType, connectorType, portCount, rackPosition, rackUnits) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('name').value = name;
+            document.getElementById('physical_type').value = physicalType;
+            document.getElementById('connector_type').value = connectorType;
+            document.getElementById('port_count').value = portCount;
+            document.getElementById('rack_position').value = rackPosition || '';
+            document.getElementById('rack_units').value = rackUnits;
+            document.getElementById('node_id').value = nodeId;
+            updateRacks(nodeId, document.getElementById('rack_id'));
+            setTimeout(() => { document.getElementById('rack_id').value = rackId; }, 50);
+            document.getElementById('formTitle').textContent = 'Edit Panel';
+            document.getElementById('submitBtn').textContent = 'Update Panel';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            window.scrollTo(0, 0);
+        }
+
+        function updateRacks(nodeId, selectEl) {
+            const filtered = allRacks.filter(r => r.node_id === parseInt(nodeId));
+            selectEl.innerHTML = '<option value="">Select rack...</option>' +
+                filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+        }
+
+        function cancelEdit() {
+            document.getElementById('edit_id').value = '';
+            document.getElementById('createForm').reset();
+            document.getElementById('formTitle').textContent = 'Create Regular Panel';
+            document.getElementById('submitBtn').textContent = 'Create Panel';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        async function createPanel(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit_id').value;
+            const data = {
+                node_id: parseInt(document.getElementById('node_id').value),
+                rack_id: parseInt(document.getElementById('rack_id').value),
+                name: document.getElementById('name').value,
+                physical_type: document.getElementById('physical_type').value,
+                connector_type: document.getElementById('connector_type').value,
+                port_count: parseInt(document.getElementById('port_count').value),
+                rack_position: parseInt(document.getElementById('rack_position').value) || null,
+                rack_units: parseInt(document.getElementById('rack_units').value)
+            };
+            try {
+                if (editId) {
+                    await apiPut(`/panels/${editId}`, data);
+                    showMessage('Panel updated');
+                    cancelEdit();
+                } else {
+                    await apiPost('/panels', data);
+                    showMessage('Panel created');
+                    e.target.reset();
+                }
+                loadPanels();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function createHDFPanel(e) {
+            e.preventDefault();
+            const rackId = document.getElementById('hdf_rack_id').value;
+            try {
+                await apiPost('/panels/hdf', {
+                    node_id: parseInt(document.getElementById('hdf_node_id').value),
+                    rack_id: rackId ? parseInt(rackId) : null,
+                    name: document.getElementById('hdf_name').value,
+                    rows: parseInt(document.getElementById('hdf_rows').value),
+                    description: document.getElementById('hdf_description').value
+                });
+                showMessage('HDF Panel created');
+                e.target.reset();
+                loadPanels();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function deletePanel(id) {
+            if (!confirm('Delete this panel?')) return;
+            try {
+                await apiDelete(`/panels/${id}`);
+                showMessage('Panel deleted');
+                loadPanels();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('createForm').addEventListener('submit', createPanel);
+        document.getElementById('hdfForm').addEventListener('submit', createHDFPanel);
+        loadNodesAndRacks().then(loadPanels);
+    </script>
+</body>
+</html>

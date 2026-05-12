@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathfinding - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html" class="active">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2>Find Path Between Ports</h2>
+            <form id="traceForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="port_a_id">Source Port</label>
+                        <select id="port_a_id" required>
+                            <option value="">Select port...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="port_b_id">Destination Port</label>
+                        <select id="port_b_id" required>
+                            <option value="">Select port...</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn">Trace Path</button>
+            </form>
+            <div id="traceResult" style="margin-top:20px;display:none;">
+                <h3>Result</h3>
+                <pre id="traceResultContent" style="background:#f8f9fa;padding:15px;border-radius:4px;overflow:auto;"></pre>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Device to AGG Path</h2>
+            <form id="deviceForm">
+                <div class="form-group">
+                    <label for="device_id">Device</label>
+                    <select id="device_id" required>
+                        <option value="">Select device...</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn">Find Path to AGG</button>
+            </form>
+            <div id="deviceResult" style="margin-top:20px;display:none;">
+                <h3>Result</h3>
+                <pre id="deviceResultContent" style="background:#f8f9fa;padding:15px;border-radius:4px;overflow:auto;"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+
+        async function loadPortsAndDevices() {
+            const [ports, devices] = await Promise.all([
+                apiGet('/ports'),
+                apiGet('/devices')
+            ]);
+
+            const portOptions = '<option value="">Select port...</option>' +
+                ports.map(p => {
+                    const label = `${p.name} (${p.panel_name || p.device_name || '?'})`;
+                    return `<option value="${p.id}">${esc(label)}</option>`;
+                }).join('');
+
+            document.getElementById('port_a_id').innerHTML = portOptions;
+            document.getElementById('port_b_id').innerHTML = portOptions;
+
+            document.getElementById('device_id').innerHTML = '<option value="">Select device...</option>' +
+                devices.map(d => `<option value="${d.id}">${esc(d.name)} (${esc(d.device_type)})</option>`).join('');
+        }
+
+        async function tracePath(e) {
+            e.preventDefault();
+            const portA = document.getElementById('port_a_id').value;
+            const portB = document.getElementById('port_b_id').value;
+            const resultDiv = document.getElementById('traceResult');
+            const resultContent = document.getElementById('traceResultContent');
+
+            try {
+                const result = await apiGet(`/pathfinding/between?port_a_id=${portA}&port_b_id=${portB}`);
+                resultContent.textContent = JSON.stringify(result, null, 2);
+                resultDiv.style.display = 'block';
+            } catch (err) {
+                resultContent.textContent = 'Error: ' + err.message;
+                resultDiv.style.display = 'block';
+            }
+        }
+
+        async function findDevicePath(e) {
+            e.preventDefault();
+            const deviceId = document.getElementById('device_id').value;
+            const resultDiv = document.getElementById('deviceResult');
+            const resultContent = document.getElementById('deviceResultContent');
+
+            try {
+                const result = await apiGet(`/pathfinding/device/${deviceId}/to-agg`);
+                resultContent.textContent = JSON.stringify(result, null, 2);
+                resultDiv.style.display = 'block';
+            } catch (err) {
+                resultContent.textContent = 'Error: ' + err.message;
+                resultDiv.style.display = 'block';
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('traceForm').addEventListener('submit', tracePath);
+        document.getElementById('deviceForm').addEventListener('submit', findDevicePath);
+        loadPortsAndDevices();
+    </script>
+</body>
+</html>

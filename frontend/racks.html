@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Racks - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html" class="active">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2 id="formTitle">Create Rack</h2>
+            <form id="createForm">
+                <input type="hidden" id="edit_id">
+                <div class="form-group">
+                    <label for="node_id">Node</label>
+                    <select id="node_id" required>
+                        <option value="">Select a node...</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" required placeholder="e.g., Rack A1">
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" id="location" placeholder="e.g., Row 1, Position 3">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rack_unit_size">Rack Unit Size</label>
+                        <input type="number" id="rack_unit_size" value="42" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="rack_type">Type</label>
+                        <select id="rack_type">
+                            <option value="standard">Standard</option>
+                            <option value="wall-mount">Wall-mount</option>
+                            <option value="open-frame">Open-frame</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" id="submitBtn">Create Rack</button>
+                <button type="button" class="btn" id="cancelBtn" style="display:none;" onclick="cancelEdit()">Cancel</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Racks</h2>
+            <div id="list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+
+        async function loadNodes() {
+            const nodes = await apiGet('/nodes?site_id=1');
+            const select = document.getElementById('node_id');
+            select.innerHTML = '<option value="">Select a node...</option>' +
+                nodes.map(n => `<option value="${n.id}">${n.name} (${n.location})</option>`).join('');
+        }
+
+        async function loadRacks() {
+            const [nodes, racks] = await Promise.all([
+                apiGet('/nodes?site_id=1'),
+                apiGet('/racks')
+            ]);
+            const nodeMap = {};
+            nodes.forEach(n => nodeMap[n.id] = n.name);
+
+            const list = document.getElementById('list');
+            if (!racks.length) {
+                list.innerHTML = '<p>No racks yet.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Node</th><th>Location</th><th>Size</th><th>Type</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${racks.map(r => `
+                            <tr>
+                                <td>${esc(r.name)}</td>
+                                <td>${esc(nodeMap[r.node_id] || '-')}</td>
+                                <td>${esc(r.location || '-')}</td>
+                                <td>${r.rack_unit_size}U</td>
+                                <td>${esc(r.rack_type)}</td>
+                                <td class="actions">
+                                    <button class="btn" onclick="editRack(${r.id}, ${r.node_id}, '${esc(r.name)}', '${esc(r.location || '')}', ${r.rack_unit_size}, '${r.rack_type}')">Edit</button>
+                                    <button class="btn btn-danger" onclick="deleteRack(${r.id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function editRack(id, nodeId, name, location, size, type) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('name').value = name;
+            document.getElementById('location').value = location;
+            document.getElementById('rack_unit_size').value = size;
+            document.getElementById('rack_type').value = type;
+            document.getElementById('node_id').value = nodeId;
+            document.getElementById('formTitle').textContent = 'Edit Rack';
+            document.getElementById('submitBtn').textContent = 'Update Rack';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            window.scrollTo(0, 0);
+        }
+
+        function cancelEdit() {
+            document.getElementById('edit_id').value = '';
+            document.getElementById('createForm').reset();
+            document.getElementById('formTitle').textContent = 'Create Rack';
+            document.getElementById('submitBtn').textContent = 'Create Rack';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        async function createRack(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit_id').value;
+            const data = {
+                node_id: parseInt(document.getElementById('node_id').value),
+                name: document.getElementById('name').value,
+                location: document.getElementById('location').value,
+                rack_unit_size: parseInt(document.getElementById('rack_unit_size').value),
+                rack_type: document.getElementById('rack_type').value
+            };
+            try {
+                if (editId) {
+                    await apiPut(`/racks/${editId}`, data);
+                    showMessage('Rack updated');
+                    cancelEdit();
+                } else {
+                    await apiPost('/racks', data);
+                    showMessage('Rack created');
+                    e.target.reset();
+                }
+                loadRacks();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function deleteRack(id) {
+            if (!confirm('Delete this rack?')) return;
+            try {
+                await apiDelete(`/racks/${id}`);
+                showMessage('Rack deleted');
+                loadRacks();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('createForm').addEventListener('submit', createRack);
+        loadNodes().then(loadRacks);
+    </script>
+</body>
+</html>

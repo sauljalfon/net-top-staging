@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connections - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html" class="active">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2>Create Connection</h2>
+            <form id="createForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="port_a_id">Port A</label>
+                        <select id="port_a_id" required>
+                            <option value="">Select port...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="port_b_id">Port B</label>
+                        <select id="port_b_id" required>
+                            <option value="">Select port...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <input type="text" id="notes" placeholder="Optional notes">
+                </div>
+                <button type="submit" class="btn btn-success">Create Connection</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Connections</h2>
+            <div id="list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+
+        async function loadPorts() {
+            const ports = await apiGet('/ports');
+            const panelPorts = ports.filter(p => p.panel_id);
+            const devicePorts = ports.filter(p => p.device_id);
+
+            const makeOptions = (ports) => ports.map(p => {
+                const label = `${p.name} (${p.panel_name || p.device_name || '?'} - ${p.panel_id ? 'Panel' : 'Device'})`;
+                return `<option value="${p.id}">${esc(label)}</option>`;
+            }).join('');
+
+            document.getElementById('port_a_id').innerHTML = '<option value="">Select port...</option>' + makeOptions(ports);
+            document.getElementById('port_b_id').innerHTML = '<option value="">Select port...</option>' + makeOptions(ports);
+        }
+
+        async function loadConnections() {
+            const connections = await apiGet('/connections');
+            const list = document.getElementById('list');
+
+            if (!connections.length) {
+                list.innerHTML = '<p>No connections yet.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Port A</th>
+                            <th>Panel/Device A</th>
+                            <th>Port B</th>
+                            <th>Panel/Device B</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${connections.map(c => `
+                            <tr>
+                                <td>${esc(c.port_a_display_name || c.port_a_name)}</td>
+                                <td>${esc(c.port_a_panel_name || c.port_a_device_name || '-')}</td>
+                                <td>${esc(c.port_b_display_name || c.port_b_name)}</td>
+                                <td>${esc(c.port_b_panel_name || c.port_b_device_name || '-')}</td>
+                                <td><span class="badge badge-${c.status === 'active' ? 'active' : 'inactive'}">${esc(c.status)}</span></td>
+                                <td><button class="btn btn-danger" onclick="deleteConnection(${c.id})">Delete</button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        async function createConnection(e) {
+            e.preventDefault();
+            const portA = document.getElementById('port_a_id').value;
+            const portB = document.getElementById('port_b_id').value;
+
+            if (portA === portB) {
+                showMessage('Cannot connect a port to itself', 'error');
+                return;
+            }
+
+            try {
+                await apiPost('/connections', {
+                    port_a_id: parseInt(portA),
+                    port_b_id: parseInt(portB),
+                    notes: document.getElementById('notes').value || null
+                });
+                showMessage('Connection created');
+                document.getElementById('createForm').reset();
+                loadConnections();
+                loadPorts();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function deleteConnection(id) {
+            if (!confirm('Delete this connection?')) return;
+            try {
+                await apiDelete(`/connections/${id}`);
+                showMessage('Connection deleted');
+                loadConnections();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('createForm').addEventListener('submit', createConnection);
+        loadPorts().then(loadConnections);
+    </script>
+</body>
+</html>

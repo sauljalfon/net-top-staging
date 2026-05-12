@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html" class="active">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="stats" id="stats">
+            <div class="stat-card"><div class="number" id="nodeCount">-</div><div class="label">Nodes</div></div>
+            <div class="stat-card"><div class="number" id="rackCount">-</div><div class="label">Racks</div></div>
+            <div class="stat-card"><div class="number" id="panelCount">-</div><div class="label">Panels</div></div>
+            <div class="stat-card"><div class="number" id="deviceCount">-</div><div class="label">Devices</div></div>
+            <div class="stat-card"><div class="number" id="connectionCount">-</div><div class="label">Connections</div></div>
+        </div>
+
+        <div class="card">
+            <h2>Quick Actions</h2>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <a href="nodes.html" class="btn">Add Node</a>
+                <a href="racks.html" class="btn">Add Rack</a>
+                <a href="panels.html" class="btn">Add Panel</a>
+                <a href="devices.html" class="btn">Add Device</a>
+                <a href="connections.html" class="btn">Add Connection</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        async function loadStats() {
+            try {
+                const [nodes, racks, panels, devices, connections] = await Promise.all([
+                    apiGet('/nodes'),
+                    apiGet('/racks'),
+                    apiGet('/panels'),
+                    apiGet('/devices'),
+                    apiGet('/connections')
+                ]);
+                document.getElementById('nodeCount').textContent = nodes.length;
+                document.getElementById('rackCount').textContent = racks.length;
+                document.getElementById('panelCount').textContent = panels.length;
+                document.getElementById('deviceCount').textContent = devices.length;
+                document.getElementById('connectionCount').textContent = connections.length;
+            } catch (err) {
+                console.error('Failed to load stats', err);
+            }
+        }
+
+        loadStats();
+    </script>
+</body>
+</html>

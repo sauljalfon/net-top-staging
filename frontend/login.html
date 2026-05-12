@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>Net-Top-Staging</h1>
+            <div id="message" class="message" style="display:none;"></div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter shared password">
+                </div>
+                <button type="submit" class="btn" style="width:100%;">Login</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        const API = '/api';
+
+        async function login(e) {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const messageEl = document.getElementById('message');
+
+            try {
+                const res = await fetch(`${API}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    messageEl.textContent = data.detail || 'Login failed';
+                    messageEl.className = 'message error';
+                    messageEl.style.display = 'block';
+                    return;
+                }
+
+                localStorage.setItem('token', data.token);
+                window.location.href = 'index.html';
+            } catch (err) {
+                messageEl.textContent = 'Connection error';
+                messageEl.className = 'message error';
+                messageEl.style.display = 'block';
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', login);
+    </script>
+</body>
+</html>

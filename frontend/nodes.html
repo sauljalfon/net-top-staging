@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nodes - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html" class="active">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2 id="formTitle">Create Node</h2>
+            <form id="createForm">
+                <input type="hidden" id="edit_id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" required placeholder="e.g., Building A">
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" id="location" required placeholder="e.g., Floor 1, Room 101">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" id="description" placeholder="Optional description">
+                </div>
+                <button type="submit" class="btn btn-success" id="submitBtn">Create Node</button>
+                <button type="button" class="btn" id="cancelBtn" style="display:none;" onclick="cancelEdit()">Cancel</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Nodes</h2>
+            <div id="list">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+
+        async function loadNodes() {
+            const nodes = await apiGet('/nodes?site_id=1');
+            const list = document.getElementById('list');
+
+            if (!nodes.length) {
+                list.innerHTML = '<p>No nodes yet. Create one above.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Location</th>
+                            <th>Description</th>
+                            <th>Racks</th>
+                            <th>Panels</th>
+                            <th>Devices</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${nodes.map(n => `
+                            <tr>
+                                <td>${esc(n.name)}</td>
+                                <td>${esc(n.location)}</td>
+                                <td>${esc(n.description || '-')}</td>
+                                <td>${n.rack_count || 0}</td>
+                                <td>${n.panel_count || 0}</td>
+                                <td>${n.device_count || 0}</td>
+                                <td class="actions">
+                                    <button class="btn" onclick="editNode(${n.id}, '${esc(n.name)}', '${esc(n.location)}', '${esc(n.description || '')}')">Edit</button>
+                                    <button class="btn btn-danger" onclick="deleteNode(${n.id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function editNode(id, name, location, description) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('name').value = name;
+            document.getElementById('location').value = location;
+            document.getElementById('description').value = description;
+            document.getElementById('formTitle').textContent = 'Edit Node';
+            document.getElementById('submitBtn').textContent = 'Update Node';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            window.scrollTo(0, 0);
+        }
+
+        function cancelEdit() {
+            document.getElementById('edit_id').value = '';
+            document.getElementById('createForm').reset();
+            document.getElementById('formTitle').textContent = 'Create Node';
+            document.getElementById('submitBtn').textContent = 'Create Node';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        async function createNode(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit_id').value;
+            const data = {
+                site_id: 1,
+                name: document.getElementById('name').value,
+                location: document.getElementById('location').value,
+                description: document.getElementById('description').value
+            };
+
+            try {
+                if (editId) {
+                    await apiPut(`/nodes/${editId}`, data);
+                    showMessage('Node updated');
+                    cancelEdit();
+                } else {
+                    await apiPost('/nodes', data);
+                    showMessage('Node created successfully');
+                    e.target.reset();
+                }
+                loadNodes();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function deleteNode(id) {
+            if (!confirm('Delete this node? This will cascade delete all racks, panels, and devices.')) return;
+            try {
+                await apiDelete(`/nodes/${id}`);
+                showMessage('Node deleted');
+                loadNodes();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('createForm').addEventListener('submit', createNode);
+        loadNodes();
+    </script>
+</body>
+</html>
