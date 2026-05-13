@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 import ipaddress
 
 from src.db import get_db
-from src.models import Node as NodeModel, Rack as RackModel, Device as DeviceModel
+from src.models import Node as NodeModel, Rack as RackModel, Device as DeviceModel, Port as PortModel
 from src.schemas import Device, DeviceCreate, DeviceUpdate
 
 router = APIRouter()
@@ -12,6 +12,51 @@ router = APIRouter()
 NETWORK_CHOICES = ['Clicknet', 'Ezrahi Tahor', 'Clickfree', 'Shahor Zahav', 'Tzavar', 'Katom', 'Other']
 NETWORK_LOOKUP = {choice.lower(): choice for choice in NETWORK_CHOICES}
 ALLOWED_TYPES = ['edge switch', 'agg switch', 'router', 'ups', 'other']
+
+
+def _create_missing_device_ports(db: Session, device_id: int, target_count: int):
+    existing_ports = db.query(PortModel).filter(PortModel.device_id == device_id).all()
+    existing_numbers = {
+        int(p.port_number) for p in existing_ports
+        if p.port_number and str(p.port_number).isdigit()
+    }
+
+    for idx in range(1, target_count + 1):
+        if idx in existing_numbers:
+            continue
+        db.add(PortModel(
+            name=str(idx),
+            port_number=str(idx),
+            device_id=device_id,
+            port_type='ethernet',
+            connector_type='RJ45',
+            status='available',
+        ))
+
+
+def _shrink_device_ports(db: Session, device_id: int, target_count: int):
+    existing_ports = db.query(PortModel).filter(PortModel.device_id == device_id).all()
+    removable_ports = []
+
+    for port in existing_ports:
+        if not (port.port_number and str(port.port_number).isdigit()):
+            continue
+        if int(port.port_number) <= target_count:
+            continue
+
+        has_connection = db.query(PortModel).filter(
+            PortModel.id == port.id,
+            (PortModel.connections.any()) | (PortModel.connections_b.any())
+        ).first()
+        if has_connection:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot reduce port_count: port {port.port_number} is connected"
+            )
+        removable_ports.append(port)
+
+    for port in removable_ports:
+        db.delete(port)
 
 @router.get("", response_model=List[Device])
 def get_devices(node_id: Optional[int] = None, rack_id: Optional[int] = None, name: Optional[str] = None, db: Session = Depends(get_db)):
@@ -74,13 +119,19 @@ def create_device(device_in: DeviceCreate, db: Session = Depends(get_db)):
                 normalized_type = t
                 break
 
-    device_data = device_in.model_dump()
+    requested_port_count = device_in.port_count
+    device_data = device_in.model_dump(exclude={'port_count'})
     device_data['device_type'] = normalized_type or device_in.device_type
     device_data['network'] = normalized_network
 
     device = DeviceModel(**device_data)
     try:
         db.add(device)
+        db.flush()
+
+        if requested_port_count:
+            _create_missing_device_ports(db, device.id, requested_port_count)
+
         db.commit()
         db.refresh(device)
     except Exception as e:
@@ -117,8 +168,17 @@ def update_device(device_id: int, device_in: DeviceUpdate, db: Session = Depends
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid ip_address")
 
+    target_port_count = update_data.pop('port_count', None)
+
     for key, value in update_data.items():
         setattr(device, key, value)
+
+    if target_port_count is not None:
+        current_count = db.query(PortModel).filter(PortModel.device_id == device.id).count()
+        if target_port_count > current_count:
+            _create_missing_device_ports(db, device.id, target_port_count)
+        elif target_port_count < current_count:
+            _shrink_device_ports(db, device.id, target_port_count)
 
     db.commit()
     db.refresh(device)

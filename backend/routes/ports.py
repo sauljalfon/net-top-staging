@@ -1,12 +1,76 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel, Field
 
 from src.db import get_db
 from src.models import Node as NodeModel, Panel as PanelModel, Device as DeviceModel, Port as PortModel, SubPanel as SubPanelModel
 from src.schemas import Port, PortCreate, PortUpdate
 
 router = APIRouter()
+
+
+class PortBulkCreate(BaseModel):
+    entity_type: str
+    entity_id: int
+    start_port: int = Field(..., ge=1)
+    end_port: int = Field(..., ge=1)
+    port_type: Optional[str] = None
+    connector_type: Optional[str] = None
+    status: Optional[str] = "available"
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+def create_ports_bulk(data: PortBulkCreate, db: Session = Depends(get_db)):
+    entity_type = (data.entity_type or "").strip().lower()
+    if entity_type not in ("panel", "device"):
+        raise HTTPException(status_code=400, detail="entity_type must be panel or device")
+    if data.end_port < data.start_port:
+        raise HTTPException(status_code=400, detail="end_port must be greater than or equal to start_port")
+
+    panel_id = None
+    device_id = None
+    if entity_type == "panel":
+        panel = db.query(PanelModel).filter(PanelModel.id == data.entity_id).first()
+        if not panel:
+            raise HTTPException(status_code=404, detail="Panel not found")
+        panel_id = panel.id
+    else:
+        device = db.query(DeviceModel).filter(DeviceModel.id == data.entity_id).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        device_id = device.id
+
+    existing_query = db.query(PortModel)
+    if panel_id:
+        existing_query = existing_query.filter(PortModel.panel_id == panel_id)
+    else:
+        existing_query = existing_query.filter(PortModel.device_id == device_id)
+
+    existing_numbers = {
+        int(p.port_number) for p in existing_query.all()
+        if p.port_number and str(p.port_number).isdigit()
+    }
+
+    created = 0
+    skipped = 0
+    for idx in range(data.start_port, data.end_port + 1):
+        if idx in existing_numbers:
+            skipped += 1
+            continue
+        db.add(PortModel(
+            name=str(idx),
+            port_number=str(idx),
+            panel_id=panel_id,
+            device_id=device_id,
+            port_type=(data.port_type or ("fiber" if panel_id else "ethernet")).lower(),
+            connector_type=(data.connector_type or ("RJ45" if device_id else None)),
+            status=data.status or "available",
+        ))
+        created += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "range": [data.start_port, data.end_port]}
 
 @router.get("", response_model=List[Port])
 def get_ports(panel_id: Optional[int] = None, device_id: Optional[int] = None, node_id: Optional[int] = None, db: Session = Depends(get_db)):
@@ -108,6 +172,9 @@ def delete_port(port_id: int, db: Session = Depends(get_db)):
     port = db.query(PortModel).filter(PortModel.id == port_id).first()
     if not port:
         raise HTTPException(status_code=404, detail="Port not found")
+
+    if port.connections or port.connections_b:
+        raise HTTPException(status_code=400, detail="Cannot delete a connected port")
 
     db.delete(port)
     db.commit()

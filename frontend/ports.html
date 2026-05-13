@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ports - Net-Top-Staging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <h1>Net-Top-Staging</h1>
+        <div>
+            <a href="index.html">Dashboard</a>
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </nav>
+    <nav class="nav">
+        <ul>
+            <li><a href="index.html">Dashboard</a></li>
+            <li><a href="nodes.html">Nodes</a></li>
+            <li><a href="racks.html">Racks</a></li>
+            <li><a href="panels.html">Panels</a></li>
+            <li><a href="devices.html">Devices</a></li>
+            <li><a href="ports.html" class="active">Ports</a></li>
+            <li><a href="connections.html">Connections</a></li>
+            <li><a href="pathfinding.html">Pathfinding</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2>Port Context</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="entity_type">Entity Type</label>
+                    <select id="entity_type">
+                        <option value="panel">Panel</option>
+                        <option value="device">Device</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="node_id">Node</label>
+                    <select id="node_id">
+                        <option value="">All nodes</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="entity_id">Panel/Device</label>
+                    <select id="entity_id">
+                        <option value="">Select...</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Create Port</h2>
+            <form id="createPortForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="port_number">Port Number</label>
+                        <input type="number" id="port_number" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="port_name">Port Name</label>
+                        <input type="text" id="port_name" placeholder="defaults to port number">
+                    </div>
+                    <div class="form-group">
+                        <label for="port_type">Port Type</label>
+                        <select id="port_type">
+                            <option value="ethernet">Ethernet</option>
+                            <option value="fiber">Fiber</option>
+                            <option value="copper">Copper</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="connector_type">Connector</label>
+                        <input type="text" id="connector_type" placeholder="e.g., RJ45, LC">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">Create Port</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Bulk Create Ports</h2>
+            <form id="bulkForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bulk_start">Start</label>
+                        <input type="number" id="bulk_start" min="1" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="bulk_end">End</label>
+                        <input type="number" id="bulk_end" min="1" value="24" required>
+                    </div>
+                </div>
+                <button type="button" class="btn" onclick="quickRange(24)">1-24</button>
+                <button type="button" class="btn" onclick="quickRange(48)">1-48</button>
+                <button type="submit" class="btn btn-success">Bulk Create</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Ports</h2>
+            <div id="list"><div class="loading">Loading...</div></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        checkAuth();
+        let allNodes = [];
+        let allPanels = [];
+        let allDevices = [];
+        let allPorts = [];
+
+        async function initData() {
+            const [nodes, panels, devices, ports] = await Promise.all([
+                apiGet('/nodes?site_id=1'),
+                apiGet('/panels'),
+                apiGet('/devices'),
+                apiGet('/ports')
+            ]);
+            allNodes = nodes;
+            allPanels = panels;
+            allDevices = devices;
+            allPorts = ports;
+            renderNodeFilter();
+            applyQueryContext();
+            renderEntityOptions();
+            renderPorts();
+        }
+
+        function renderNodeFilter() {
+            document.getElementById('node_id').innerHTML = '<option value="">All nodes</option>' +
+                allNodes.map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('');
+        }
+
+        function applyQueryContext() {
+            const params = new URLSearchParams(window.location.search);
+            const entity = params.get('entity');
+            const id = params.get('id');
+            if (entity === 'panel' || entity === 'device') {
+                document.getElementById('entity_type').value = entity;
+            }
+            if (id) {
+                document.getElementById('entity_id').setAttribute('data-prefill-id', id);
+            }
+        }
+
+        function renderEntityOptions() {
+            const type = document.getElementById('entity_type').value;
+            const nodeId = parseInt(document.getElementById('node_id').value);
+            const prefill = document.getElementById('entity_id').getAttribute('data-prefill-id');
+
+            const entities = (type === 'panel' ? allPanels : allDevices)
+                .filter(e => !nodeId || e.node_id === nodeId);
+
+            document.getElementById('entity_id').innerHTML = '<option value="">Select...</option>' +
+                entities.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+
+            if (prefill) {
+                document.getElementById('entity_id').value = prefill;
+                document.getElementById('entity_id').removeAttribute('data-prefill-id');
+            }
+        }
+
+        function getFilteredPorts() {
+            const type = document.getElementById('entity_type').value;
+            const entityId = parseInt(document.getElementById('entity_id').value);
+            const nodeId = parseInt(document.getElementById('node_id').value);
+
+            let ports = allPorts;
+            if (nodeId) {
+                const panelIds = new Set(allPanels.filter(p => p.node_id === nodeId).map(p => p.id));
+                const deviceIds = new Set(allDevices.filter(d => d.node_id === nodeId).map(d => d.id));
+                ports = ports.filter(p => (p.panel_id && panelIds.has(p.panel_id)) || (p.device_id && deviceIds.has(p.device_id)));
+            }
+            if (entityId) {
+                ports = ports.filter(p => type === 'panel' ? p.panel_id === entityId : p.device_id === entityId);
+            } else {
+                ports = ports.filter(p => type === 'panel' ? !!p.panel_id : !!p.device_id);
+            }
+            return ports;
+        }
+
+        function renderPorts() {
+            const ports = getFilteredPorts();
+            const panelMap = {}; allPanels.forEach(p => panelMap[p.id] = p.name);
+            const deviceMap = {}; allDevices.forEach(d => deviceMap[d.id] = d.name);
+            const list = document.getElementById('list');
+
+            if (!ports.length) {
+                list.innerHTML = '<p>No ports for the selected context.</p>';
+                return;
+            }
+
+            list.innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>Name</th><th>Owner</th><th>Type</th><th>Connector</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${ports.map(p => `
+                            <tr>
+                                <td>${esc(p.port_number || '-')}</td>
+                                <td>${esc(p.name)}</td>
+                                <td>${esc(p.panel_id ? panelMap[p.panel_id] : deviceMap[p.device_id])}</td>
+                                <td>${esc(p.port_type || '-')}</td>
+                                <td>${esc(p.connector_type || '-')}</td>
+                                <td>${esc(p.status || '-')}</td>
+                                <td class="actions">
+                                    <button class="btn" onclick="editPort(${p.id}, '${jsEsc(p.name)}', '${jsEsc(p.port_number || '')}', '${jsEsc(p.port_type || '')}', '${jsEsc(p.connector_type || '')}', '${jsEsc(p.status || '')}')">Edit</button>
+                                    <button class="btn btn-danger" onclick="deletePort(${p.id})">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function quickRange(end) {
+            document.getElementById('bulk_start').value = 1;
+            document.getElementById('bulk_end').value = end;
+        }
+
+        function currentContextOrThrow() {
+            const entityType = document.getElementById('entity_type').value;
+            const entityId = parseInt(document.getElementById('entity_id').value);
+            if (!entityId) throw new Error('Select a panel/device first');
+            return { entityType, entityId };
+        }
+
+        async function createPort(e) {
+            e.preventDefault();
+            try {
+                const { entityType, entityId } = currentContextOrThrow();
+                const number = parseInt(document.getElementById('port_number').value);
+                const name = document.getElementById('port_name').value || String(number);
+                const data = {
+                    name,
+                    port_number: String(number),
+                    port_type: document.getElementById('port_type').value,
+                    connector_type: document.getElementById('connector_type').value || null,
+                    panel_id: entityType === 'panel' ? entityId : null,
+                    device_id: entityType === 'device' ? entityId : null,
+                };
+                await apiPost('/ports', data);
+                showMessage('Port created');
+                e.target.reset();
+                await refreshPorts();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function createBulk(e) {
+            e.preventDefault();
+            try {
+                const { entityType, entityId } = currentContextOrThrow();
+                const start = parseInt(document.getElementById('bulk_start').value);
+                const end = parseInt(document.getElementById('bulk_end').value);
+                const res = await apiPost('/ports/bulk', {
+                    entity_type: entityType,
+                    entity_id: entityId,
+                    start_port: start,
+                    end_port: end
+                });
+                showMessage(`Bulk done: created ${res.created}, skipped ${res.skipped}`);
+                await refreshPorts();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function refreshPorts() {
+            allPorts = await apiGet('/ports');
+            renderPorts();
+        }
+
+        async function deletePort(id) {
+            if (!confirm('Delete this port?')) return;
+            try {
+                await apiDelete(`/ports/${id}`);
+                showMessage('Port deleted');
+                await refreshPorts();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function editPort(id, name, portNumber, portType, connectorType, status) {
+            const nextName = prompt('Port name:', name);
+            if (nextName === null) return;
+            const nextNumber = prompt('Port number:', portNumber);
+            if (nextNumber === null) return;
+            try {
+                await apiPut(`/ports/${id}`, {
+                    name: nextName,
+                    port_number: nextNumber,
+                    port_type: portType || null,
+                    connector_type: connectorType || null,
+                    status: status || 'available'
+                });
+                showMessage('Port updated');
+                await refreshPorts();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        function jsEsc(s) {
+            return String(s || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
+        function esc(s) {
+            return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        document.getElementById('entity_type').addEventListener('change', () => { renderEntityOptions(); renderPorts(); });
+        document.getElementById('node_id').addEventListener('change', () => { renderEntityOptions(); renderPorts(); });
+        document.getElementById('entity_id').addEventListener('change', renderPorts);
+        document.getElementById('createPortForm').addEventListener('submit', createPort);
+        document.getElementById('bulkForm').addEventListener('submit', createBulk);
+        initData();
+    </script>
+</body>
+</html>

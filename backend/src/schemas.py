@@ -104,6 +104,7 @@ class DeviceBase(BaseModel):
     status: Optional[str] = 'active'
     network: Optional[str] = None
     description: Optional[str] = None
+    port_count: Optional[int] = Field(default=None, ge=1)
 
 class DeviceCreate(DeviceBase):
     node_id: int

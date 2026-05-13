@@ -21,6 +21,7 @@
             <li><a href="racks.html">Racks</a></li>
             <li><a href="panels.html" class="active">Panels</a></li>
             <li><a href="devices.html">Devices</a></li>
+            <li><a href="ports.html">Ports</a></li>
             <li><a href="connections.html">Connections</a></li>
             <li><a href="pathfinding.html">Pathfinding</a></li>
         </ul>
@@ -122,8 +123,10 @@
                     <label for="hdf_description">Description</label>
                     <input type="text" id="hdf_description" placeholder="Optional">
                 </div>
+                <button type="button" class="btn" onclick="previewHDF()">Preview HDF Layout</button>
                 <button type="submit" class="btn btn-success">Create HDF Panel</button>
             </form>
+            <div id="hdfPreview" style="margin-top:15px;display:none;"></div>
         </div>
 
         <div class="card">
@@ -202,6 +205,7 @@
                                 <td>${esc(p.connector_type)}</td>
                                 <td class="actions">
                                     <button class="btn" onclick="editPanel(${p.id}, ${p.node_id}, ${p.rack_id}, '${jsEsc(p.name)}', '${jsEsc(p.physical_type)}', '${jsEsc(p.connector_type)}', ${p.port_count}, ${p.rack_position || 0}, ${p.rack_units})">Edit</button>
+                                    <a class="btn" href="ports.html?entity=panel&id=${p.id}">Manage Ports</a>
                                     <button class="btn btn-danger" onclick="deletePanel(${p.id})">Delete</button>
                                 </td>
                             </tr>
@@ -279,6 +283,25 @@
                 showMessage('HDF Panel created');
                 e.target.reset();
                 loadPanels();
+            } catch (err) {
+                showMessage(err.message, 'error');
+            }
+        }
+
+        async function previewHDF() {
+            const rows = parseInt(document.getElementById('hdf_rows').value);
+            const box = document.getElementById('hdfPreview');
+            if (!rows || rows < 1) {
+                showMessage('Rows must be 1 or more', 'error');
+                return;
+            }
+            try {
+                const result = await apiGet(`/panels/hdf/preview?rows=${rows}`);
+                box.style.display = 'block';
+                box.innerHTML = `
+                    <p><strong>Preview:</strong> ${result.rows} rows x ${result.columns.join(', ')} | Sub-panels: ${result.total_subpanels} | Ports: ${result.total_ports}</p>
+                    <p>Example sub-panels: ${result.sub_panels.slice(0, 8).map(sp => esc(sp.name)).join(', ')}${result.sub_panels.length > 8 ? ' ...' : ''}</p>
+                `;
             } catch (err) {
                 showMessage(err.message, 'error');
             }

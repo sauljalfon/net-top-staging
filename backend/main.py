@@ -106,6 +106,10 @@ async def panels():
 async def devices():
     return FileResponse(os.path.join(FRONTEND_DIR, "devices.html"))
 
+@app.get("/ports.html")
+async def ports():
+    return FileResponse(os.path.join(FRONTEND_DIR, "ports.html"))
+
 @app.get("/connections.html")
 async def connections():
     return FileResponse(os.path.join(FRONTEND_DIR, "connections.html"))

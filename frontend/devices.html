@@ -21,6 +21,7 @@
             <li><a href="racks.html">Racks</a></li>
             <li><a href="panels.html">Panels</a></li>
             <li><a href="devices.html" class="active">Devices</a></li>
+            <li><a href="ports.html">Ports</a></li>
             <li><a href="connections.html">Connections</a></li>
             <li><a href="pathfinding.html">Pathfinding</a></li>
         </ul>
@@ -106,6 +107,10 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="port_count">Port Count</label>
+                        <input type="number" id="port_count" value="24" min="1" required>
+                    </div>
+                    <div class="form-group">
                         <label for="rack_position">Rack Position (U)</label>
                         <input type="number" id="rack_position" placeholder="e.g., 1">
                     </div>
@@ -154,13 +159,19 @@
         }
 
         async function loadDevices() {
-            const [devices, nodes, racks] = await Promise.all([
+            const [devices, nodes, racks, ports] = await Promise.all([
                 apiGet('/devices'),
                 apiGet('/nodes?site_id=1'),
-                apiGet('/racks')
+                apiGet('/racks'),
+                apiGet('/ports')
             ]);
             const nodeMap = {}; nodes.forEach(n => nodeMap[n.id] = n.name);
             const rackMap = {}; racks.forEach(r => rackMap[r.id] = r.name);
+            const portCountMap = {};
+            ports.forEach(p => {
+                if (!p.device_id) return;
+                portCountMap[p.device_id] = (portCountMap[p.device_id] || 0) + 1;
+            });
 
             const list = document.getElementById('list');
             if (!devices.length) {
@@ -171,7 +182,7 @@
             list.innerHTML = `
                 <table>
                     <thead>
-                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Manufacturer</th><th>Model</th><th>IP</th><th>Status</th><th>Actions</th></tr>
+                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Ports</th><th>Manufacturer</th><th>Model</th><th>IP</th><th>Status</th><th>Actions</th></tr>
                     </thead>
                     <tbody>
                         ${devices.map(d => `
@@ -180,12 +191,14 @@
                                 <td>${esc(nodeMap[d.node_id] || '-')}</td>
                                 <td>${esc(rackMap[d.rack_id] || '-')}</td>
                                 <td>${esc(d.device_type)}</td>
+                                <td>${portCountMap[d.id] || 0}</td>
                                 <td>${esc(d.manufacturer || '-')}</td>
                                 <td>${esc(d.model || '-')}</td>
                                 <td>${esc(d.ip_address || '-')}</td>
                                 <td><span class="badge badge-${d.status === 'active' ? 'active' : 'inactive'}">${esc(d.status)}</span></td>
                                 <td class="actions">
-                                    <button class="btn" onclick="editDevice(${d.id}, ${d.node_id}, ${d.rack_id}, '${jsEsc(d.name)}', '${jsEsc(d.device_type || '')}', '${jsEsc(d.manufacturer || '')}', '${jsEsc(d.model || '')}', '${jsEsc(d.serial_number || '')}', '${jsEsc(d.ip_address || '')}', '${jsEsc(d.network || '')}', '${jsEsc(d.status)}', ${d.rack_position || 0}, ${d.rack_units})">Edit</button>
+                                    <button class="btn" onclick="editDevice(${d.id}, ${d.node_id}, ${d.rack_id}, '${jsEsc(d.name)}', '${jsEsc(d.device_type || '')}', '${jsEsc(d.manufacturer || '')}', '${jsEsc(d.model || '')}', '${jsEsc(d.serial_number || '')}', '${jsEsc(d.ip_address || '')}', '${jsEsc(d.network || '')}', '${jsEsc(d.status)}', ${d.rack_position || 0}, ${d.rack_units}, ${portCountMap[d.id] || 0})">Edit</button>
+                                    <a class="btn" href="ports.html?entity=device&id=${d.id}">Manage Ports</a>
                                     <button class="btn btn-danger" onclick="deleteDevice(${d.id})">Delete</button>
                                 </td>
                             </tr>
@@ -195,7 +208,7 @@
             `;
         }
 
-        function editDevice(id, nodeId, rackId, name, deviceType, manufacturer, model, serialNumber, ipAddress, network, status, rackPosition, rackUnits) {
+        function editDevice(id, nodeId, rackId, name, deviceType, manufacturer, model, serialNumber, ipAddress, network, status, rackPosition, rackUnits, portCount) {
             document.getElementById('edit_id').value = id;
             document.getElementById('name').value = name;
             document.getElementById('device_type').value = deviceType;
@@ -207,6 +220,7 @@
             document.getElementById('status').value = status;
             document.getElementById('rack_position').value = rackPosition || '';
             document.getElementById('rack_units').value = rackUnits;
+            document.getElementById('port_count').value = portCount || 24;
             document.getElementById('node_id').value = nodeId;
             const filtered = allRacks.filter(r => r.node_id === nodeId);
             document.getElementById('rack_id').innerHTML = '<option value="">Select rack...</option>' +
@@ -241,7 +255,8 @@
                 network: document.getElementById('network').value || null,
                 status: document.getElementById('status').value,
                 rack_position: parseInt(document.getElementById('rack_position').value) || null,
-                rack_units: parseInt(document.getElementById('rack_units').value)
+                rack_units: parseInt(document.getElementById('rack_units').value),
+                port_count: parseInt(document.getElementById('port_count').value)
             };
             try {
                 if (editId) {

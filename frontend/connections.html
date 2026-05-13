@@ -21,6 +21,7 @@
             <li><a href="racks.html">Racks</a></li>
             <li><a href="panels.html">Panels</a></li>
             <li><a href="devices.html">Devices</a></li>
+            <li><a href="ports.html">Ports</a></li>
             <li><a href="connections.html" class="active">Connections</a></li>
             <li><a href="pathfinding.html">Pathfinding</a></li>
         </ul>
@@ -30,6 +31,28 @@
         <div class="card">
             <h2>Create Connection</h2>
             <form id="createForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="filter_node_id">Filter by Node</label>
+                        <select id="filter_node_id">
+                            <option value="">All nodes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="filter_parent_type">Parent Type</label>
+                        <select id="filter_parent_type">
+                            <option value="">All</option>
+                            <option value="panel">Panel</option>
+                            <option value="device">Device</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="filter_parent_id">Panel/Device</label>
+                        <select id="filter_parent_id">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="port_a_id">Port A</label>
@@ -61,14 +84,84 @@
     <script src="common.js"></script>
     <script>
         checkAuth();
+        let allPorts = [];
+        let allNodes = [];
+        let allPanels = [];
+        let allDevices = [];
 
         async function loadPorts() {
-            const ports = await apiGet('/ports');
-            const panelPorts = ports.filter(p => p.panel_id);
-            const devicePorts = ports.filter(p => p.device_id);
+            const [ports, nodes, panels, devices] = await Promise.all([
+                apiGet('/ports'),
+                apiGet('/nodes?site_id=1'),
+                apiGet('/panels'),
+                apiGet('/devices')
+            ]);
+            allPorts = ports;
+            allNodes = nodes;
+            allPanels = panels;
+            allDevices = devices;
 
-            const makeOptions = (ports) => ports.map(p => {
-                const label = `${p.name} (${p.panel_name || p.device_name || '?'} - ${p.panel_id ? 'Panel' : 'Device'})`;
+            document.getElementById('filter_node_id').innerHTML = '<option value="">All nodes</option>' +
+                nodes.map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('');
+
+            renderParentFilterOptions();
+            renderPortSelects();
+        }
+
+        function renderParentFilterOptions() {
+            const type = document.getElementById('filter_parent_type').value;
+            const nodeId = parseInt(document.getElementById('filter_node_id').value);
+            let options = [{ id: '', name: 'All' }];
+
+            if (type === 'panel') {
+                options = options.concat(allPanels
+                    .filter(p => !nodeId || p.node_id === nodeId)
+                    .map(p => ({ id: `panel:${p.id}`, name: p.name })));
+            } else if (type === 'device') {
+                options = options.concat(allDevices
+                    .filter(d => !nodeId || d.node_id === nodeId)
+                    .map(d => ({ id: `device:${d.id}`, name: d.name })));
+            }
+
+            document.getElementById('filter_parent_id').innerHTML = options
+                .map(o => `<option value="${o.id}">${esc(o.name)}</option>`)
+                .join('');
+        }
+
+        function getFilteredPorts() {
+            const nodeId = parseInt(document.getElementById('filter_node_id').value);
+            const type = document.getElementById('filter_parent_type').value;
+            const parentRaw = document.getElementById('filter_parent_id').value;
+            const nodePanels = new Set(allPanels.filter(p => !nodeId || p.node_id === nodeId).map(p => p.id));
+            const nodeDevices = new Set(allDevices.filter(d => !nodeId || d.node_id === nodeId).map(d => d.id));
+
+            return allPorts.filter(p => {
+                if (nodeId) {
+                    const panelOk = p.panel_id && nodePanels.has(p.panel_id);
+                    const deviceOk = p.device_id && nodeDevices.has(p.device_id);
+                    if (!panelOk && !deviceOk) return false;
+                }
+
+                if (!type) return true;
+                if (type === 'panel' && !p.panel_id) return false;
+                if (type === 'device' && !p.device_id) return false;
+                if (!parentRaw) return true;
+
+                const [parentType, idStr] = parentRaw.split(':');
+                const parentId = parseInt(idStr);
+                if (parentType === 'panel') return p.panel_id === parentId;
+                if (parentType === 'device') return p.device_id === parentId;
+                return true;
+            });
+        }
+
+        function renderPortSelects() {
+            const ports = getFilteredPorts();
+            const panelMap = {}; allPanels.forEach(p => panelMap[p.id] = p.name);
+            const deviceMap = {}; allDevices.forEach(d => deviceMap[d.id] = d.name);
+            const makeOptions = (list) => list.map(p => {
+                const owner = p.panel_id ? panelMap[p.panel_id] : deviceMap[p.device_id];
+                const label = `${p.name} (${owner || '?'} - ${p.panel_id ? 'Panel' : 'Device'})`;
                 return `<option value="${p.id}">${esc(label)}</option>`;
             }).join('');
 
@@ -154,6 +247,15 @@
         }
 
         document.getElementById('createForm').addEventListener('submit', createConnection);
+        document.getElementById('filter_node_id').addEventListener('change', () => {
+            renderParentFilterOptions();
+            renderPortSelects();
+        });
+        document.getElementById('filter_parent_type').addEventListener('change', () => {
+            renderParentFilterOptions();
+            renderPortSelects();
+        });
+        document.getElementById('filter_parent_id').addEventListener('change', renderPortSelects);
         loadPorts().then(loadConnections);
     </script>
 </body>
