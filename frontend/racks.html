@@ -76,6 +76,14 @@
     <script>
         checkAuth();
 
+        function jsEsc(s) {
+            return String(s || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
         async function loadNodes() {
             const nodes = await apiGet('/nodes?site_id=1');
             const select = document.getElementById('node_id');
@@ -111,7 +119,7 @@
                                 <td>${r.rack_unit_size}U</td>
                                 <td>${esc(r.rack_type)}</td>
                                 <td class="actions">
-                                    <button class="btn" onclick="editRack(${r.id}, ${r.node_id}, '${esc(r.name)}', '${esc(r.location || '')}', ${r.rack_unit_size}, '${r.rack_type}')">Edit</button>
+                                    <button class="btn" onclick="editRack(${r.id}, ${r.node_id}, '${jsEsc(r.name)}', '${jsEsc(r.location || '')}', ${r.rack_unit_size}, '${jsEsc(r.rack_type)}')">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteRack(${r.id})">Delete</button>
                                 </td>
                             </tr>

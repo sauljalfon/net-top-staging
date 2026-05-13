@@ -62,6 +62,14 @@
     <script>
         checkAuth();
 
+        function jsEsc(s) {
+            return String(s || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
         async function loadNodes() {
             const nodes = await apiGet('/nodes?site_id=1');
             const list = document.getElementById('list');
@@ -94,7 +102,7 @@
                                 <td>${n.panel_count || 0}</td>
                                 <td>${n.device_count || 0}</td>
                                 <td class="actions">
-                                    <button class="btn" onclick="editNode(${n.id}, '${esc(n.name)}', '${esc(n.location)}', '${esc(n.description || '')}')">Edit</button>
+                                    <button class="btn" onclick="editNode(${n.id}, '${jsEsc(n.name)}', '${jsEsc(n.location)}', '${jsEsc(n.description || '')}')">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteNode(${n.id})">Delete</button>
                                 </td>
                             </tr>

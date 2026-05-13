@@ -130,6 +130,14 @@
         checkAuth();
         let allRacks = [];
 
+        function jsEsc(s) {
+            return String(s || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
         async function loadNodesAndRacks() {
             const nodes = await apiGet('/nodes?site_id=1');
             allRacks = await apiGet('/racks');
@@ -177,7 +185,7 @@
                                 <td>${esc(d.ip_address || '-')}</td>
                                 <td><span class="badge badge-${d.status === 'active' ? 'active' : 'inactive'}">${esc(d.status)}</span></td>
                                 <td class="actions">
-                                    <button class="btn" onclick="editDevice(${d.id}, ${d.node_id}, ${d.rack_id}, '${esc(d.name)}', '${esc(d.device_type || '')}', '${esc(d.manufacturer || '')}', '${esc(d.model || '')}', '${esc(d.serial_number || '')}', '${esc(d.ip_address || '')}', '${esc(d.network || '')}', '${d.status}', ${d.rack_position || 0}, ${d.rack_units})">Edit</button>
+                                    <button class="btn" onclick="editDevice(${d.id}, ${d.node_id}, ${d.rack_id}, '${jsEsc(d.name)}', '${jsEsc(d.device_type || '')}', '${jsEsc(d.manufacturer || '')}', '${jsEsc(d.model || '')}', '${jsEsc(d.serial_number || '')}', '${jsEsc(d.ip_address || '')}', '${jsEsc(d.network || '')}', '${jsEsc(d.status)}', ${d.rack_position || 0}, ${d.rack_units})">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteDevice(${d.id})">Delete</button>
                                 </td>
                             </tr>

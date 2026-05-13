@@ -137,6 +137,21 @@
         checkAuth();
         let allRacks = [];
 
+        function jsEsc(s) {
+            return String(s || '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
+        function updateRacks(nodeId, selectEl, includeNone = false) {
+            const filtered = allRacks.filter(r => r.node_id === parseInt(nodeId));
+            const opts = (includeNone ? '<option value="">None</option>' : '<option value="">Select rack...</option>') +
+                filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+            selectEl.innerHTML = opts;
+        }
+
         async function loadNodesAndRacks() {
             const nodes = await apiGet('/nodes?site_id=1');
             allRacks = await apiGet('/racks');
@@ -152,16 +167,11 @@
             nodeSelect.innerHTML = nodeOptions;
             hdfNodeSelect.innerHTML = nodeOptions;
 
-            function updateRacks(nodeId, selectEl, includeNone = false) {
-                const filtered = allRacks.filter(r => r.node_id === parseInt(nodeId));
-                const opts = (includeNone ? '<option value="">None</option>' : '<option value="">Select rack...</option>') +
-                    filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
-                selectEl.innerHTML = opts;
-            }
-
             nodeSelect.addEventListener('change', () => updateRacks(nodeSelect.value, rackSelect));
             hdfNodeSelect.addEventListener('change', () => updateRacks(hdfNodeSelect.value, hdfRackSelect, true));
         }
+
+        async function loadPanels() {
             const [panels, nodes, racks] = await Promise.all([
                 apiGet('/panels'),
                 apiGet('/nodes?site_id=1'),
@@ -179,7 +189,7 @@
             list.innerHTML = `
                 <table>
                     <thead>
-                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Ports</th><th>Physical</th><th>Connector</th><th>Actions</th></tr>
+                        <tr><th>Name</th><th>Node</th><th>Rack</th><th>Type</th><th>Ports</th><th>Connector</th><th>Actions</th></tr>
                     </thead>
                     <tbody>
                         ${panels.map(p => `
@@ -189,10 +199,9 @@
                                 <td>${esc(rackMap[p.rack_id] || '-')}</td>
                                 <td>${esc(p.physical_type)}</td>
                                 <td>${p.actual_port_count || 0}/${p.port_count}</td>
-                                <td>${esc(p.physical_type)}</td>
                                 <td>${esc(p.connector_type)}</td>
                                 <td class="actions">
-                                    <button class="btn" onclick="editPanel(${p.id}, ${p.node_id}, ${p.rack_id}, '${esc(p.name)}', '${p.physical_type}', '${p.connector_type}', ${p.port_count}, ${p.rack_position || 0}, ${p.rack_units})">Edit</button>
+                                    <button class="btn" onclick="editPanel(${p.id}, ${p.node_id}, ${p.rack_id}, '${jsEsc(p.name)}', '${jsEsc(p.physical_type)}', '${jsEsc(p.connector_type)}', ${p.port_count}, ${p.rack_position || 0}, ${p.rack_units})">Edit</button>
                                     <button class="btn btn-danger" onclick="deletePanel(${p.id})">Delete</button>
                                 </td>
                             </tr>
@@ -217,12 +226,6 @@
             document.getElementById('submitBtn').textContent = 'Update Panel';
             document.getElementById('cancelBtn').style.display = 'inline-block';
             window.scrollTo(0, 0);
-        }
-
-        function updateRacks(nodeId, selectEl) {
-            const filtered = allRacks.filter(r => r.node_id === parseInt(nodeId));
-            selectEl.innerHTML = '<option value="">Select rack...</option>' +
-                filtered.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
         }
 
         function cancelEdit() {

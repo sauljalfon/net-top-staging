@@ -49,6 +49,8 @@
 
     <script src="common.js"></script>
     <script>
+        checkAuth();
+
         async function loadStats() {
             try {
                 const [nodes, racks, panels, devices, connections] = await Promise.all([
