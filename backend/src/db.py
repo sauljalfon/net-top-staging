@@ -8,7 +8,30 @@ from contextlib import contextmanager
 
 from .models import Base
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./net_top_staging.db')
+
+def _resolve_database_url() -> str:
+    """Resolve DB URL with a safe default to local SQLite.
+
+    Priority:
+    1) STAGING_DATABASE_URL
+    2) DATABASE_URL (only if sqlite)
+    3) sqlite:///./net_top_staging.db
+
+    This prevents accidental usage of production-style DATABASE_URL values
+    (for example postgres@postgres) when running staging outside Docker.
+    """
+    explicit_staging = os.environ.get('STAGING_DATABASE_URL')
+    if explicit_staging:
+        return explicit_staging
+
+    generic = os.environ.get('DATABASE_URL')
+    if generic and generic.startswith('sqlite'):
+        return generic
+
+    return 'sqlite:///./net_top_staging.db'
+
+
+DATABASE_URL = _resolve_database_url()
 
 engine = create_engine(
     DATABASE_URL,

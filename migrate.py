@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 def _load_urls(args: argparse.Namespace) -> Tuple[str, str]:
     load_dotenv(os.path.join(os.path.dirname(__file__), "backend", ".env"))
-    source_url = args.source_db_url or os.environ.get("DATABASE_URL")
+    source_url = args.source_db_url or os.environ.get("STAGING_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not source_url:
         source_path = os.path.join(os.path.dirname(__file__), "backend", "net_top_staging.db")
         source_url = f"sqlite:///{source_path}"
