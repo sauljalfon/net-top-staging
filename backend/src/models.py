@@ -176,6 +176,8 @@ class Port(Base, TimestampMixin):
     device_id = Column(Integer, ForeignKey('devices.id', ondelete='CASCADE'), index=True)
     port_type = Column(String(50))
     port_number = Column(String(50))
+    panel_position = Column(Integer)
+    panel_side = Column(String(10))
     status = Column(String(20), default='available')
     speed = Column(String(20))
     description = Column(Text)
@@ -201,9 +203,17 @@ class Port(Base, TimestampMixin):
             '(panel_id IS NOT NULL AND device_id IS NULL) OR (panel_id IS NULL AND device_id IS NOT NULL)',
             name='check_port_belongs_to_panel_or_device'
         ),
+        CheckConstraint(
+            "(panel_id IS NOT NULL AND panel_position IS NOT NULL AND panel_side IN ('front','rear')) "
+            "OR (panel_id IS NULL AND panel_position IS NULL AND panel_side IS NULL)",
+            name='check_panel_side_fields'
+        ),
+        CheckConstraint('panel_position IS NULL OR panel_position > 0', name='check_panel_position_positive'),
+        UniqueConstraint('panel_id', 'panel_position', 'panel_side', name='uq_panel_position_side'),
         Index('idx_port_panel', 'panel_id'),
         Index('idx_port_device', 'device_id'),
         Index('idx_port_status', 'status'),
+        Index('idx_port_panel_position_side', 'panel_id', 'panel_position', 'panel_side'),
     )
 
     @property

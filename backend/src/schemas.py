@@ -131,6 +131,8 @@ class PortCreate(PortBase):
     panel_id: Optional[int] = None
     sub_panel_id: Optional[int] = None
     device_id: Optional[int] = None
+    panel_position: Optional[int] = None
+    panel_side: Optional[str] = None
 
 class PortUpdate(PortBase):
     name: Optional[str] = None
@@ -147,6 +149,8 @@ class Port(PortBase, TimestampSchema):
     sub_panel_name: Optional[str] = None
     device_name: Optional[str] = None
     display_name: Optional[str] = None
+    panel_position: Optional[int] = None
+    panel_side: Optional[str] = None
 
 class ConnectionBase(BaseModel):
     status: Optional[str] = 'active'

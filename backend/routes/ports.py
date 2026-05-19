@@ -10,6 +10,17 @@ from src.schemas import Port, PortCreate, PortUpdate
 router = APIRouter()
 
 
+def _normalize_panel_endpoint_fields(panel_id: Optional[int], panel_position: Optional[int], panel_side: Optional[str]):
+    if panel_id is None:
+        return None, None
+    if panel_position is None or panel_position <= 0:
+        raise HTTPException(status_code=400, detail="panel_position must be a positive integer for panel ports")
+    normalized_side = (panel_side or 'front').strip().lower()
+    if normalized_side not in {'front', 'rear'}:
+        raise HTTPException(status_code=400, detail="panel_side must be 'front' or 'rear'")
+    return panel_position, normalized_side
+
+
 class PortBulkCreate(BaseModel):
     entity_type: str
     entity_id: int
@@ -63,6 +74,8 @@ def create_ports_bulk(data: PortBulkCreate, db: Session = Depends(get_db)):
             port_number=str(idx),
             panel_id=panel_id,
             device_id=device_id,
+            panel_position=idx if panel_id else None,
+            panel_side='front' if panel_id else None,
             port_type=(data.port_type or ("fiber" if panel_id else "ethernet")).lower(),
             connector_type=(data.connector_type or ("RJ45" if device_id else None)),
             status=data.status or "available",
@@ -128,6 +141,14 @@ def create_port(port_in: PortCreate, db: Session = Depends(get_db)):
             if sub_panel.panel_id != port_in.panel_id:
                 raise HTTPException(status_code=400, detail="Sub-panel does not belong to the specified panel")
 
+        panel_position, panel_side = _normalize_panel_endpoint_fields(
+            port_in.panel_id,
+            port_in.panel_position,
+            port_in.panel_side,
+        )
+    else:
+        panel_position, panel_side = None, None
+
     if port_in.device_id:
         device = db.query(DeviceModel).filter(DeviceModel.id == port_in.device_id).first()
         if not device:
@@ -136,6 +157,8 @@ def create_port(port_in: PortCreate, db: Session = Depends(get_db)):
     port_data = port_in.model_dump()
     port_data['port_type'] = port_type
     port_data['connector_type'] = connector_type
+    port_data['panel_position'] = panel_position
+    port_data['panel_side'] = panel_side
 
     port = PortModel(**port_data)
     db.add(port)
@@ -159,6 +182,16 @@ def update_port(port_id: int, port_in: PortUpdate, db: Session = Depends(get_db)
 
     if "connector_type" in update_data and update_data['connector_type']:
         update_data['connector_type'] = update_data['connector_type'].upper()
+
+    if port.panel_id is not None:
+        candidate_position = update_data.get('panel_position', port.panel_position)
+        candidate_side = update_data.get('panel_side', port.panel_side)
+        panel_position, panel_side = _normalize_panel_endpoint_fields(port.panel_id, candidate_position, candidate_side)
+        update_data['panel_position'] = panel_position
+        update_data['panel_side'] = panel_side
+    else:
+        update_data['panel_position'] = None
+        update_data['panel_side'] = None
 
     for key, value in update_data.items():
         setattr(port, key, value)

@@ -113,9 +113,12 @@ def create_connection(conn_in: ConnectionCreate, db: Session = Depends(get_db)):
     if not port_b:
         raise HTTPException(status_code=404, detail="Port B not found")
 
+    normalized_port_a_id = min(conn_in.port_a_id, conn_in.port_b_id)
+    normalized_port_b_id = max(conn_in.port_a_id, conn_in.port_b_id)
+
     existing = db.query(ConnectionModel).filter(
-        ((ConnectionModel.port_a_id == conn_in.port_a_id) & (ConnectionModel.port_b_id == conn_in.port_b_id)) |
-        ((ConnectionModel.port_a_id == conn_in.port_b_id) & (ConnectionModel.port_b_id == conn_in.port_a_id))
+        ((ConnectionModel.port_a_id == normalized_port_a_id) & (ConnectionModel.port_b_id == normalized_port_b_id)) |
+        ((ConnectionModel.port_a_id == normalized_port_b_id) & (ConnectionModel.port_b_id == normalized_port_a_id))
     ).first()
 
     if existing:
@@ -136,8 +139,8 @@ def create_connection(conn_in: ConnectionCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=f"Port '{port_b.name}' is already connected to another port")
 
     connection = ConnectionModel(
-        port_a_id=conn_in.port_a_id,
-        port_b_id=conn_in.port_b_id,
+        port_a_id=normalized_port_a_id,
+        port_b_id=normalized_port_b_id,
         status=conn_in.status or 'active',
         notes=conn_in.notes
     )
